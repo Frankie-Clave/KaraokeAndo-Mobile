@@ -1,0 +1,37 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KaraokeAndo · La estrella eres tú</title><style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#101020;color:#fff;font:16px system-ui,Arial;padding:16px;max-width:660px;margin:auto}
+h1{color:#ffd367;text-align:center}h2{font-size:19px}section{background:#202038;border-radius:16px;padding:17px;margin:13px 0}
+input,button,textarea{font:inherit;border-radius:10px;padding:12px;margin:5px 0;border:1px solid #555;background:#30304a;color:white;width:100%}
+button{background:#7845c7;border:0;font-weight:bold;cursor:pointer}button:disabled{opacity:.5}.row{display:flex;gap:8px}.row button{flex:1}
+.card{padding:10px;border-bottom:1px solid #4b4b60}.muted{color:#c5c5d2;font-size:13px}.hidden{display:none}
+#alert{background:#8c351b;border-radius:12px;padding:12px;display:none;position:sticky;top:4px;z-index:2}
+</style></head><body><h1>🎤 KaraokeAndo</h1><p style="text-align:center">La estrella eres tú</p>
+<div id="alert"></div><section id="login"><h2>Entrar al karaoke</h2><input id="nick" placeholder="Tu nombre" maxlength="40" autocomplete="nickname">
+<input id="key" placeholder="Clave de acceso de 6 dígitos" maxlength="6" inputmode="numeric">
+<button id="enter">Entrar</button><p class="muted">Tu registro se conserva al cambiar de aplicación.</p></section>
+<div id="app" class="hidden"><section><h2 id="welcome"></h2><p id="state"></p><button id="logout">Cambiar cantante</button></section>
+<section><h2>Buscar canción</h2><input id="query" placeholder="Cantante o canción"><button id="search">Buscar</button><div id="results"></div></section>
+<section><h2>¿No la encuentras? Pídela aquí</h2><input id="youtube" placeholder="Enlace de YouTube"><input id="song" placeholder="Título de la canción"><button id="sendYoutube">Pedir canción de YouTube</button></section>
+<section><h2>Enviar mensaje al DJ</h2><textarea id="message" maxlength="180" rows="2" placeholder="Tu mensaje"></textarea><button id="sendMessage">Enviar mensaje</button></section>
+<section><h2>Reacciones</h2><div class="row" id="reactions"></div></section>
+<section><h2>Mis solicitudes</h2><div id="requests"></div></section></div>
+<script>
+const $=id=>document.getElementById(id);
+const code=new URLSearchParams(location.search).get("code")||"";
+const storage="ka-vdj-"+code;
+let session=JSON.parse(localStorage.getItem(storage)||"null"),notificationCursor=0;
+function notice(msg){$("alert").textContent=msg;$("alert").style.display="block";setTimeout(()=>$("alert").style.display="none",5500)}
+async function rpc(name,args){const r=await fetch("https://pngwswsmylmrayhieavi.supabase.co/functions/v1/vdj-mobile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,args})});const data=await r.json();if(!r.ok)throw Error(data.error||"No se pudo conectar");return data}
+async function act(fn){try{await fn()}catch(e){notice(e.message)}}
+function show(){const ok=!!session;$("login").classList.toggle("hidden",ok);$("app").classList.toggle("hidden",!ok);if(ok)$("welcome").textContent="¡Hola, "+session.name+"!"}
+async function resume(){if(!session)return;try{const data=await rpc("vdj_resume",{p_token:session.token});$("state").textContent=data.status==="paused"?"Karaoke en pausa":"Sesión activa";show();refresh()}catch(e){session=null;localStorage.removeItem(storage);show()}}
+$("enter").onclick=()=>act(async()=>{const name=$("nick").value.trim(),key=$("key").value.trim();if(!name||!/^\d{6}$/.test(key)||!code)throw Error("Revisa tu nombre, clave y QR");const rows=await rpc("vdj_join",{p_code:code,p_key:key,p_nickname:name});const d=rows[0];if(d.error)throw Error(d.error);session={token:d.token,name};localStorage.setItem(storage,JSON.stringify(session));show();refresh()});
+$("logout").onclick=()=>{localStorage.removeItem(storage);session=null;show()};
+$("search").onclick=()=>act(async()=>{const rows=await rpc("vdj_search",{p_token:session.token,p_query:$("query").value});$("results").replaceChildren();if(!rows.length)$("results").textContent="No aparece en el catálogo local. Puedes solicitarla por YouTube.";for(const item of rows){const div=document.createElement("div");div.className="card";const label=document.createElement("span");label.textContent=item.title+" ("+item.format+") ";const btn=document.createElement("button");btn.textContent="Pedir";btn.onclick=()=>act(async()=>{await rpc("vdj_request",{p_token:session.token,p_nonce:crypto.randomUUID(),p_source:"catalog",p_item_ref:item.item_ref,p_title:item.title,p_youtube_id:null});notice("Solicitud enviada al DJ")});div.append(label,btn);$("results").append(div)}});
+$("sendYoutube").onclick=()=>act(async()=>{const raw=$("youtube").value.trim(),u=new URL(raw);let id=u.searchParams.get("v")||(u.hostname==="youtu.be"?u.pathname.slice(1):null);if(!id&&u.pathname.includes("/shorts/"))id=u.pathname.split("/shorts/")[1].split("/")[0];if(!/^[\w-]{11}$/.test(id||""))throw Error("Pega un enlace válido de YouTube");const title=$("song").value.trim();if(!title)throw Error("Escribe el título");await rpc("vdj_request",{p_token:session.token,p_nonce:crypto.randomUUID(),p_source:"youtube",p_item_ref:null,p_title:title,p_youtube_id:id});notice("Pedido de YouTube enviado")});
+$("sendMessage").onclick=()=>act(async()=>{await rpc("vdj_message",{p_token:session.token,p_nonce:crypto.randomUUID(),p_body:$("message").value});$("message").value="";notice("Mensaje enviado para aprobación")});
+for(const [kind,emoji] of [["heart","❤️"],["clap","👏"],["fire","🔥"],["star","⭐"],["laugh","😂"],["dislike","👎"]]){const b=document.createElement("button");b.textContent=emoji;b.onclick=()=>act(async()=>{await rpc("vdj_react",{p_token:session.token,p_kind:kind})});$("reactions").append(b)}
+async function refresh(){if(!session)return;try{const data=await rpc("vdj_my_status",{p_token:session.token,p_after_notification:notificationCursor});$("state").textContent=data.status==="paused"?"Karaoke en pausa":"Sesión "+data.status;$("requests").replaceChildren();for(const r of data.requests){const d=document.createElement("div");d.className="card";d.textContent=r.title+" · "+r.status;$("requests").append(d)}for(const n of data.notifications){notificationCursor=Math.max(notificationCursor,n.id);notice("🎤 "+(n.title||"Tu canción")+" · "+n.kind);if(navigator.vibrate)navigator.vibrate([200,100,200])}}catch(e){}}
+show();resume();setInterval(refresh,4000);
+</script></body></html>
