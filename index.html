@@ -106,7 +106,7 @@
 <h2 class="text-2xl">Busca tu canción</h2>
 <label class="label-xs mt-4" for="song">Título o artista</label>
 <input id="song" class="field" maxlength="100" placeholder="Escribe para buscar">
-<button id="request" type="button" class="btn-base btn-primary mt-4 w-full py-4 text-lg">Buscar canciones</button>
+
 <p class="mt-2 text-xs text-muted-foreground">🎤 Primero buscamos en el repertorio del DJ; si no está, buscamos en YouTube. «Karaoke» se agrega automáticamente. ⏳ YouTube puede tardar unos segundos.</p>
 <div id="results" role="list" class="mt-3 space-y-2"></div><div class="mt-5 border-t border-white/10 pt-4"><h3 class="font-bold text-lg">🎵 Mi lista de canciones</h3><p class="text-xs text-muted-foreground">Puedes preparar varias canciones; solo una entrará a la rotación a la vez.</p><div id="myPlaylist" class="mt-3 space-y-2"></div></div>
 <p class="mt-2 text-xs text-muted-foreground">Selecciona un resultado para entrar a la fila.</p>
@@ -179,8 +179,7 @@ function addSongResult(item,source){
  b.append(label);
  b.onclick=()=>act(async()=>{
   await rpc("vdj_playlist_add",{p_token:session.token,p_source:source==="catalog"?"catalog":"youtube",p_item_ref:source==="catalog"?item.item_ref:null,p_title:item.title,p_youtube_id:source==="catalog"?null:item.youtube_id});
-  const result=await rpc("vdj_playlist_dispatch",{p_token:session.token});
-  notice(result.sent?"¡Tu canción ya está en la lista!":"Canción guardada en tu lista personal; espera tu turno.");
+  notice("Canción guardada en tu lista privada. Tú decides cuándo enviarla.");
   el("results").replaceChildren();await refreshPlaylist();
  });
  el("results").append(b);
@@ -197,6 +196,15 @@ async function refreshPlaylist(){
   name.textContent=item.title+" · "+(item.status==="waiting"?"En espera":"En rotación");
   line.append(name);
   if(item.status==="waiting"){
+   const send=document.createElement("button");send.type="button";send.className="btn-base btn-primary p-2 text-xs";
+   send.textContent="Enviar a cantar";
+   send.onclick=()=>act(async()=>{
+    if(!confirm("¿Enviar esta canción a la rotación de karaoke?"))return;
+    const result=await rpc("vdj_playlist_send",{p_token:session.token,p_id:item.id});
+    notice(result.sent?"¡Tu canción ya está en la lista!":result.reason);
+    await refreshPlaylist();
+   });
+   line.append(send);
    const cancel=document.createElement("button");cancel.type="button";cancel.className="btn-base btn-ghost p-2 text-xs";
    cancel.textContent="Quitar";
    cancel.onclick=()=>act(async()=>{
@@ -210,7 +218,7 @@ async function refreshPlaylist(){
  }
 }
 let searchSequence=0;
-el("request").onclick=()=>act(async()=>{
+async function searchSongs(){return act(async()=>{
  const seq=++searchSequence,q=el("song").value.trim();
  if(q.length<2)throw Error("Escribe al menos dos letras");
  el("results").replaceChildren();notice("Buscando en el repertorio local…");
@@ -246,14 +254,20 @@ el("request").onclick=()=>act(async()=>{
   a.className="btn-base btn-primary block text-center p-3 mt-3";
   el("results").append(a);
  }
+});}
+let searchTimer;
+el("song").addEventListener("input",()=>{
+ clearTimeout(searchTimer);
+ if(el("song").value.trim().length<2){++searchSequence;el("results").replaceChildren();return;}
+ searchTimer=setTimeout(searchSongs,450);
 });
 el("send").onclick=()=>act(async()=>{await rpc("vdj_message",{p_token:session.token,p_nonce:crypto.randomUUID(),p_body:el("message").value.trim()});el("message").value="";notice("Mensaje enviado para aprobación")});
 const fallback={heart:"❤️",clap:"👏",fire:"🔥",star:"⭐",laugh:"😂",dislike:"👎"};
 for(const b of document.querySelectorAll("#reactionPad button")){const img=b.querySelector("img");if(img){img.remove();const span=document.createElement("span");span.textContent=fallback[b.dataset.kind];span.style.fontSize="30px";b.append(span)}b.onclick=()=>act(async()=>{await rpc("vdj_react",{p_token:session.token,p_kind:b.dataset.kind});navigator.vibrate?.(15)})}
 el("bigNoticeOk").onclick=()=>el("bigNotice").hidden=true;
-async function refresh(){if(!session)return;try{const d=await rpc("vdj_my_status",{p_token:session.token,p_after_notification:cursor});el("queueInfo").textContent=d.status==="paused"?"Karaoke en pausa":"Sesión "+(d.status||"activa");if(d.requests?.length)el("myTurn").textContent="Tus pedidos: "+d.requests.map(x=>x.title+" ("+x.status+")").join(" · ");if(!(d.requests||[]).some(x=>["pending","queued","notified"].includes(x.status))){
- try{const dispatched=await rpc("vdj_playlist_dispatch",{p_token:session.token});if(dispatched.sent)await refreshPlaylist()}catch(e){}
-}
+async function refresh(){if(!session)return;try{const d=await rpc("vdj_my_status",{p_token:session.token,p_after_notification:cursor});el("queueInfo").textContent=d.status==="paused"?"Karaoke en pausa":"Sesión "+(d.status||"activa");if(d.requests?.length)el("myTurn").textContent="Tus pedidos: "+d.requests.map(x=>x.title+" ("+x.status+")").join(" · ");const canSend=!(d.requests||[]).some(x=>["pending","queued","notified"].includes(x.status));
+ if(canSend&&!window.__canSendLast){notice("🎤 ¡YA PUEDES ENVIAR OTRA CANCIÓN!");refreshPlaylist();}
+ window.__canSendLast=canSend;
 for(const n of d.notifications||[]){cursor=Math.max(cursor,n.id);el("bigNoticeText").textContent="🎤 "+(n.title||"Tu canción")+" · "+n.kind;el("bigNotice").hidden=false;navigator.vibrate?.([200,100,200])}}catch(e){notice("No se pudo actualizar: "+e.message)}}
 show();if(session)act(async()=>{try{await resolveEvent();await rpc("vdj_resume",{p_token:session.token});refresh();await refreshPlaylist()}catch(e){session=null;localStorage.removeItem(storage);show();notice("El evento anterior terminó. Regístrate con la clave del nuevo evento.")}});setInterval(refresh,4000);
 </script></body></html>
