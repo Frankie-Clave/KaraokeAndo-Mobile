@@ -1,0 +1,10 @@
+{
+  "name": "karaokeando-vdj-verification",
+  "private": true,
+  "scripts": {
+    "test": "MOBILE_ROOT=. node tests/mobile-delivery.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.57.0"
+  }
+}
