@@ -108,7 +108,7 @@
 <input id="song" class="field" maxlength="100" placeholder="Escribe para buscar">
 <button id="request" type="button" class="btn-base btn-primary mt-4 w-full py-4 text-lg">Buscar canciones</button>
 <p class="mt-2 text-xs text-muted-foreground">🎤 Primero buscamos en el repertorio del DJ; si no está, buscamos en YouTube. «Karaoke» se agrega automáticamente. ⏳ YouTube puede tardar unos segundos.</p>
-<div id="results" role="list" class="mt-3 space-y-2"></div>
+<div id="results" role="list" class="mt-3 space-y-2"></div><div class="mt-5 border-t border-white/10 pt-4"><h3 class="font-bold text-lg">🎵 Mi lista de canciones</h3><p class="text-xs text-muted-foreground">Puedes preparar varias canciones; solo una entrará a la rotación a la vez.</p><div id="myPlaylist" class="mt-3 space-y-2"></div></div>
 <p class="mt-2 text-xs text-muted-foreground">Selecciona un resultado para entrar a la fila.</p>
 
 </section>
@@ -165,7 +165,7 @@ function notice(msg){el("status").textContent=msg}
 async function rpc(name,args){const r=await fetch("https://pngwswsmylmrayhieavi.supabase.co/functions/v1/vdj-mobile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,args})});const d=await r.json();if(!r.ok)throw Error(d.error||"No se pudo conectar");return d}
 async function act(fn){try{await fn()}catch(e){notice(e.message)}}
 function show(){el("joinBox").hidden=!!session;el("controls").hidden=!session;if(session)el("myTurn").textContent="¡Bienvenido, "+session.name+"!"}
-el("join").onclick=()=>act(async()=>{const name=el("name").value.trim(),key=el("dailyKey").value.trim();if(!name||!/^[0-9]{6}$/.test(key))throw Error("Escribe tu nombre y clave de seis dígitos");await resolveEvent();if(!code)throw Error("Escanea el QR del evento");const rows=await rpc("vdj_join",{p_code:code,p_key:key,p_nickname:name});const d=rows[0];if(d.error)throw Error(d.error);session={token:d.token,name};localStorage.setItem(storage,JSON.stringify(session));show();refresh()});
+el("join").onclick=()=>act(async()=>{const name=el("name").value.trim(),key=el("dailyKey").value.trim();if(!name||!/^[0-9]{6}$/.test(key))throw Error("Escribe tu nombre y clave de seis dígitos");await resolveEvent();if(!code)throw Error("Escanea el QR del evento");const rows=await rpc("vdj_join",{p_code:code,p_key:key,p_nickname:name});const d=rows[0];if(d.error)throw Error(d.error);session={token:d.token,name};localStorage.setItem(storage,JSON.stringify(session));show();refresh();await refreshPlaylist()});
 function addSongResult(item,source){
  const b=document.createElement("button");b.type="button";
  b.className="btn-base btn-ghost w-full mt-2 p-3 flex items-center gap-3 text-left";
@@ -178,15 +178,36 @@ function addSongResult(item,source){
  const label=document.createElement("span");label.textContent=item.title+" · "+(item.artist||item.format||"Karaoke");
  b.append(label);
  b.onclick=()=>act(async()=>{
-  if(source==="catalog"){
-   await rpc("vdj_request",{p_token:session.token,p_nonce:crypto.randomUUID(),p_source:"catalog",p_item_ref:item.item_ref,p_title:item.title,p_youtube_id:null});
-  }else{
-   await rpc("vdj_request",{p_token:session.token,p_nonce:crypto.randomUUID(),p_source:"youtube",p_item_ref:null,p_title:item.title,p_youtube_id:item.youtube_id});
-  }
-  notice(source==="catalog"?"¡Canción enviada a VirtualDJ!":"¡Pedido de YouTube enviado al DJ!");
-  el("results").replaceChildren();
+  await rpc("vdj_playlist_add",{p_token:session.token,p_source:source==="catalog"?"catalog":"youtube",p_item_ref:source==="catalog"?item.item_ref:null,p_title:item.title,p_youtube_id:source==="catalog"?null:item.youtube_id});
+  const result=await rpc("vdj_playlist_dispatch",{p_token:session.token});
+  notice(result.sent?"¡Tu canción ya está en la lista!":"Canción guardada en tu lista personal; espera tu turno.");
+  el("results").replaceChildren();await refreshPlaylist();
  });
  el("results").append(b);
+}
+async function refreshPlaylist(){
+ if(!session)return;
+ const rows=await rpc("vdj_playlist_list",{p_token:session.token});
+ const box=el("myPlaylist");if(!box)return;
+ box.replaceChildren();
+ if(!rows.length){box.textContent="Todavía no tienes canciones guardadas.";return;}
+ for(const item of rows){
+  const line=document.createElement("div");line.className="flex items-center gap-2 rounded-xl p-2 border border-white/10";
+  const name=document.createElement("span");name.className="flex-1 text-sm";
+  name.textContent=item.title+" · "+(item.status==="waiting"?"En espera":"En rotación");
+  line.append(name);
+  if(item.status==="waiting"){
+   const cancel=document.createElement("button");cancel.type="button";cancel.className="btn-base btn-ghost p-2 text-xs";
+   cancel.textContent="Quitar";
+   cancel.onclick=()=>act(async()=>{
+    if(!confirm("¿Quitar esta canción de tu lista?"))return;
+    await rpc("vdj_playlist_cancel",{p_token:session.token,p_id:item.id});
+    await refreshPlaylist();notice("Canción eliminada de tu lista");
+   });
+   line.append(cancel);
+  }
+  box.append(line);
+ }
 }
 let searchSequence=0;
 el("request").onclick=()=>act(async()=>{
@@ -231,5 +252,5 @@ const fallback={heart:"❤️",clap:"👏",fire:"🔥",star:"⭐",laugh:"😂",d
 for(const b of document.querySelectorAll("#reactionPad button")){const img=b.querySelector("img");if(img){img.remove();const span=document.createElement("span");span.textContent=fallback[b.dataset.kind];span.style.fontSize="30px";b.append(span)}b.onclick=()=>act(async()=>{await rpc("vdj_react",{p_token:session.token,p_kind:b.dataset.kind});navigator.vibrate?.(15)})}
 el("bigNoticeOk").onclick=()=>el("bigNotice").hidden=true;
 async function refresh(){if(!session)return;try{const d=await rpc("vdj_my_status",{p_token:session.token,p_after_notification:cursor});el("queueInfo").textContent=d.status==="paused"?"Karaoke en pausa":"Sesión "+(d.status||"activa");if(d.requests?.length)el("myTurn").textContent="Tus pedidos: "+d.requests.map(x=>x.title+" ("+x.status+")").join(" · ");for(const n of d.notifications||[]){cursor=Math.max(cursor,n.id);el("bigNoticeText").textContent="🎤 "+(n.title||"Tu canción")+" · "+n.kind;el("bigNotice").hidden=false;navigator.vibrate?.([200,100,200])}}catch(e){notice("No se pudo actualizar: "+e.message)}}
-show();if(session)act(async()=>{try{await resolveEvent();await rpc("vdj_resume",{p_token:session.token});refresh()}catch(e){session=null;localStorage.removeItem(storage);show();notice("El evento anterior terminó. Regístrate con la clave del nuevo evento.")}});setInterval(refresh,4000);
+show();if(session)act(async()=>{try{await resolveEvent();await rpc("vdj_resume",{p_token:session.token});refresh();await refreshPlaylist()}catch(e){session=null;localStorage.removeItem(storage);show();notice("El evento anterior terminó. Regístrate con la clave del nuevo evento.")}});setInterval(refresh,4000);
 </script></body></html>
