@@ -202,7 +202,18 @@ el("request").onclick=()=>act(async()=>{
  if(saved.length){saved.forEach(item=>addSongResult(item,"saved"));notice(saved.length+" canciones guardadas en JSON");return;}
  notice("Buscando directamente en YouTube…");
  try{
-  const found=await rpc("vdj_youtube_search",{p_token:session.token,p_query:q});
+  let found=await rpc("vdj_youtube_search",{p_token:session.token,p_query:q});
+  if(found.pending){
+   notice("Buscando en YouTube desde la computadora del DJ…");
+   const job=found.job_id;
+   for(let attempt=0;attempt<18;attempt++){
+    if(seq!==searchSequence)return;
+    await new Promise(resolve=>setTimeout(resolve,2500));
+    const status=await rpc("vdj_search_youtube_status",{p_token:session.token,p_job:job});
+    if(status.status==="done"){found=status.results||[];break;}
+   }
+   if(found.pending)throw Error("YouTube tardó demasiado. Intenta nuevamente.");
+  }
   if(seq!==searchSequence)return;
   if(found.length){found.forEach(item=>addSongResult(item,"youtube"));notice(found.length+" resultados de YouTube");return;}
   notice("No encontramos videos de karaoke para esa búsqueda.");
