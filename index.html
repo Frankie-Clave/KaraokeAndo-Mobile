@@ -240,6 +240,7 @@ async function searchSongs(){return act(async()=>{
     await new Promise(resolve=>setTimeout(resolve,2500));
     const status=await rpc("vdj_search_youtube_status",{p_token:session.token,p_job:job});
     if(status.status==="done"){found=status.results||[];break;}
+    if(status.status==="failed"||status.status==="error")throw Error(status.message||"Falló la búsqueda de YouTube.");
    }
    if(found.pending)throw Error("YouTube tardó demasiado. Intenta nuevamente.");
   }
