@@ -1,0 +1,10 @@
+{
+  "name": "karaokeando-mobile-verification",
+  "private": true,
+  "scripts": {
+    "test": "MOBILE_ROOT=. node test_mobile_search_browser.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.57.0"
+  }
+}
