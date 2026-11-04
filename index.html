@@ -159,11 +159,11 @@ function saveSession(){try{if(session)localStorage.setItem(storage,JSON.stringif
 try{session=JSON.parse(localStorage.getItem(storage)||'null');if(!session?.token)session=null;cursor=Number(session?.cursor)||0}catch(e){}
 function notice(text){el('status').textContent=display(text)}
 function show(){el('joinBox').hidden=!!session;el('controls').hidden=!session;if(session)el('myTurn').textContent=display('¡BIENVENIDO, '+session.name+'!')}
-function revoke(){session=null;cursor=0;saveSession();show();notice(errors.sesion_cerrada)}
+function revoke(){session=null;cursor=0;saveSession();show();notice('TU REGISTRO YA NO ES VÁLIDO. VUELVE A ENTRAR CON EL QR VIGENTE.')}
 async function rpc(name,args){
  const response=await fetch('https://pngwswsmylmrayhieavi.supabase.co/functions/v1/vdj-mobile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,args}),signal:AbortSignal.timeout(12000)});
  const d=await response.json();
- if(!response.ok||d?.error){const raw=String(d?.error||'');const e=Error(errors[raw]||display(raw||'NO SE PUDO CONECTAR. INTENTA DE NUEVO.'));e.code=raw;e.revoked=['sesion_cerrada','no_autorizado','participante_invalido','sesion_invalida','token_invalido'].includes(raw);throw e}return d;
+ if(!response.ok||d?.error){const raw=String(d?.error||d?.message||'');const e=Error(errors[raw]||display(raw||'NO SE PUDO CONECTAR. INTENTA DE NUEVO.'));e.code=raw;e.revoked=['sesion_cerrada','no_autorizado','participante_invalido','sesion_invalida','token_invalido'].includes(raw);throw e}return d;
 }
 async function act(fn){try{await fn()}catch(e){if(e.revoked)revoke();else notice(e.message)}}
 async function resolveEvent(){if(!host)return code;const rows=await rpc('vdj_resolve_host',{p_host:host});const row=Array.isArray(rows)?rows[0]:rows;if(!row?.public_code)throw Error('NO HAY UN EVENTO ACTIVO');code=row.public_code;return code}
