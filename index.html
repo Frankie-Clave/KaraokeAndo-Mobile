@@ -166,7 +166,55 @@ async function rpc(name,args){const r=await fetch("https://pngwswsmylmrayhieavi.
 async function act(fn){try{await fn()}catch(e){notice(e.message)}}
 function show(){el("joinBox").hidden=!!session;el("controls").hidden=!session;if(session)el("myTurn").textContent="¡Bienvenido, "+session.name+"!"}
 el("join").onclick=()=>act(async()=>{const name=el("name").value.trim(),key=el("dailyKey").value.trim();if(!name||!/^[0-9]{6}$/.test(key))throw Error("Escribe tu nombre y clave de seis dígitos");await resolveEvent();if(!code)throw Error("Escanea el QR del evento");const rows=await rpc("vdj_join",{p_code:code,p_key:key,p_nickname:name});const d=rows[0];if(d.error)throw Error(d.error);session={token:d.token,name};localStorage.setItem(storage,JSON.stringify(session));show();refresh()});
-el("request").onclick=()=>act(async()=>{const q=el("song").value.trim();if(q.length<2)throw Error("Escribe al menos dos letras");const rows=await rpc("vdj_search",{p_token:session.token,p_query:q});el("results").replaceChildren();if(!rows.length)notice("No se encontró en el catálogo. La búsqueda de YouTube está pendiente de integración.");for(const item of rows){const b=document.createElement("button");b.type="button";b.className="btn-base btn-ghost w-full mt-2 p-3";b.textContent=item.title+" · "+item.format;b.onclick=()=>act(async()=>{await rpc("vdj_request",{p_token:session.token,p_nonce:crypto.randomUUID(),p_source:"catalog",p_item_ref:item.item_ref,p_title:item.title,p_youtube_id:null});notice("¡Solicitud enviada al DJ!");el("results").replaceChildren()});el("results").append(b)}});
+function addSongResult(item,source){
+ const b=document.createElement("button");b.type="button";
+ b.className="btn-base btn-ghost w-full mt-2 p-3 flex items-center gap-3 text-left";
+ if(source!=="catalog"){
+  const img=document.createElement("img");
+  img.src=item.thumbnail_url||"https://i.ytimg.com/vi/"+item.youtube_id+"/mqdefault.jpg";
+  img.alt="";img.loading="lazy";img.style.cssText="width:76px;height:50px;object-fit:cover;border-radius:8px;flex-shrink:0";
+  b.append(img);
+ }
+ const label=document.createElement("span");label.textContent=item.title+" · "+(item.artist||item.format||"Karaoke");
+ b.append(label);
+ b.onclick=()=>act(async()=>{
+  if(source==="catalog"){
+   await rpc("vdj_request",{p_token:session.token,p_nonce:crypto.randomUUID(),p_source:"catalog",p_item_ref:item.item_ref,p_title:item.title,p_youtube_id:null});
+  }else{
+   await rpc("vdj_request",{p_token:session.token,p_nonce:crypto.randomUUID(),p_source:"youtube",p_item_ref:null,p_title:item.title,p_youtube_id:item.youtube_id});
+  }
+  notice(source==="catalog"?"¡Canción enviada a VirtualDJ!":"¡Pedido de YouTube enviado al DJ!");
+  el("results").replaceChildren();
+ });
+ el("results").append(b);
+}
+let searchSequence=0;
+el("request").onclick=()=>act(async()=>{
+ const seq=++searchSequence,q=el("song").value.trim();
+ if(q.length<2)throw Error("Escribe al menos dos letras");
+ el("results").replaceChildren();notice("Buscando en el repertorio local…");
+ const local=await rpc("vdj_search",{p_token:session.token,p_query:q});
+ if(seq!==searchSequence)return;
+ if(local.length){local.forEach(item=>addSongResult(item,"catalog"));notice(local.length+" canciones locales");return;}
+ notice("Buscando en el catálogo JSON de YouTube…");
+ const saved=await rpc("vdj_search_saved",{p_token:session.token,p_query:q});
+ if(seq!==searchSequence)return;
+ if(saved.length){saved.forEach(item=>addSongResult(item,"saved"));notice(saved.length+" canciones guardadas en JSON");return;}
+ notice("Buscando directamente en YouTube…");
+ try{
+  const found=await rpc("vdj_youtube_search",{p_token:session.token,p_query:q});
+  if(seq!==searchSequence)return;
+  if(found.length){found.forEach(item=>addSongResult(item,"youtube"));notice(found.length+" resultados de YouTube");return;}
+  notice("No encontramos videos de karaoke para esa búsqueda.");
+ }catch(e){
+  notice(e.message+" Puedes buscar el video en YouTube mientras se habilita la búsqueda integrada.");
+  const a=document.createElement("a");
+  a.href="https://www.youtube.com/results?search_query="+encodeURIComponent(q+" karaoke");
+  a.target="_blank";a.rel="noopener noreferrer";a.textContent="Buscar en YouTube";
+  a.className="btn-base btn-primary block text-center p-3 mt-3";
+  el("results").append(a);
+ }
+});
 el("send").onclick=()=>act(async()=>{await rpc("vdj_message",{p_token:session.token,p_nonce:crypto.randomUUID(),p_body:el("message").value.trim()});el("message").value="";notice("Mensaje enviado para aprobación")});
 const fallback={heart:"❤️",clap:"👏",fire:"🔥",star:"⭐",laugh:"😂",dislike:"👎"};
 for(const b of document.querySelectorAll("#reactionPad button")){const img=b.querySelector("img");if(img){img.remove();const span=document.createElement("span");span.textContent=fallback[b.dataset.kind];span.style.fontSize="30px";b.append(span)}b.onclick=()=>act(async()=>{await rpc("vdj_react",{p_token:session.token,p_kind:b.dataset.kind});navigator.vibrate?.(15)})}
