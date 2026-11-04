@@ -109,7 +109,7 @@
 <input id="song" class="field" maxlength="100" placeholder="Escribe para buscar">
 
 <p class="mt-2 text-xs text-muted-foreground">🎤 Primero buscamos en el repertorio del DJ; si no está, buscamos en YouTube. «Karaoke» se agrega automáticamente. ⏳ YouTube puede tardar unos segundos.</p>
-<div id="results" role="list" class="mt-3 space-y-2"></div><div class="mt-5 border-t border-white/10 pt-4"><h3 class="font-bold text-lg">🎵 Mi lista de canciones</h3><p class="text-xs text-muted-foreground">Puedes preparar varias canciones; solo una entrará a la rotación a la vez.</p><div id="myPlaylist" class="mt-3 space-y-2"></div></div>
+<div id="results" role="list" aria-label="RESULTADOS DE CANCIONES" tabindex="0" class="mt-3 space-y-2" style="max-height:min(52dvh,480px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-gutter:stable"></div><div class="mt-5 border-t border-white/10 pt-4"><h3 class="font-bold text-lg">🎵 Mi lista de canciones</h3><p class="text-xs text-muted-foreground">Puedes preparar varias canciones; solo una entrará a la rotación a la vez.</p><div id="myPlaylist" class="mt-3 space-y-2"></div></div>
 <p class="mt-2 text-xs text-muted-foreground">GUARDA UN RESULTADO EN TU LISTA Y CONFIRMA CUÁL QUIERES ENVIAR.</p>
 
 </section>
